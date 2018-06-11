@@ -122,5 +122,5 @@
 
 
   <groupId>kettle-neo4j-cypher-output</groupId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.2-SNAPSHOT</version>
 </project>
