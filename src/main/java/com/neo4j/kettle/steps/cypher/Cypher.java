@@ -1,8 +1,6 @@
 package com.neo4j.kettle.steps.graph_output;
 
-import com.neo4j.model.NeoValueMeta;
-import org.neo4j.driver.v1.AuthTokens;
-import org.neo4j.driver.v1.GraphDatabase;
+import com.neo4j.shared.NeoConnectionUtils;
 import org.neo4j.driver.v1.Record;
 import org.neo4j.driver.v1.StatementResult;
 import org.neo4j.driver.v1.Value;
@@ -11,6 +9,7 @@ import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.row.RowDataUtil;
 import org.pentaho.di.core.row.RowMeta;
+import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.BaseStep;
@@ -18,8 +17,13 @@ import org.pentaho.di.trans.step.StepDataInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
+import org.pentaho.metastore.api.exceptions.MetaStoreException;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class CypherOutput extends BaseStep implements StepInterface {
@@ -35,31 +39,26 @@ public class CypherOutput extends BaseStep implements StepInterface {
     CypherOutputMeta meta = (CypherOutputMeta) smi;
     CypherOutputData data = (CypherOutputData)sdi;
 
+    // Is the step getting input?
+    //
+    List<StepMeta> steps = getTransMeta().findPreviousSteps( getStepMeta() );
+    data.hasInput = steps!=null && steps.size()>0;
+
     // Connect to Neo4j using info in Neo4j JDBC connection metadata...
     //
     try {
+      data.neoConnection = NeoConnectionUtils.getConnectionFactory( metaStore ).loadElement( meta.getConnectionName() );
+    } catch ( MetaStoreException e ) {
+      log.logError("Could not load Neo4j connection '"+meta.getConnectionName()+"' from the metastore", e);
+      return false;
+    }
 
-      data.databaseMeta = getTransMeta().findDatabase( meta.getConnectionName() );
-      if (data.databaseMeta==null) {
-        log.logError( "Connection not found : " +meta.getConnectionName() );
-        return false;
-      }
-      if (!"neo4j".equalsIgnoreCase(data.databaseMeta.getPluginId())) {
-        log.logError("WARNING: This is not a Neo4j database connection");
-      }
-      String hostname = environmentSubstitute( data.databaseMeta.getHostname() );
-      String port = environmentSubstitute( Const.NVL(data.databaseMeta.getExtraOptions().get("BOLT_PORT"), "7687") );
-      String username = environmentSubstitute( data.databaseMeta.getUsername() );
-      String password = environmentSubstitute( data.databaseMeta.getPassword() );
+    data.batchSize = Const.toLong(environmentSubstitute( meta.getBatchSize()), 1);
 
-      data.url = "bolt://"+hostname+":"+port;
-      log.logBasic( "Neo4j URI : "+data.url );
-      data.driver = GraphDatabase.driver( data.url, AuthTokens.basic(username, password));
-
-      data.batchSize = Const.toLong(environmentSubstitute( meta.getBatchSize()), 1);
-
+    try {
+      data.driver = data.neoConnection.getDriver(log);
     } catch(Exception e) {
-      log.logError( "Unable to get or create Neo4j database driver for database '"+data.databaseMeta.getName()+"'", e);
+      log.logError( "Unable to get or create Neo4j database driver for database '"+data.neoConnection.getName()+"'", e);
       return false;
     }
 
@@ -70,7 +69,7 @@ public class CypherOutput extends BaseStep implements StepInterface {
 
     CypherOutputData data = (CypherOutputData)sdi;
 
-    if (data.recordsWritten>0) {
+    if (data.outputCount >0) {
       data.transaction.success();
       data.transaction.close();
     }
@@ -86,10 +85,23 @@ public class CypherOutput extends BaseStep implements StepInterface {
     CypherOutputMeta meta = (CypherOutputMeta) smi;
     CypherOutputData data = (CypherOutputData)sdi;
 
-    Object[] row = getRow();
-    if (row==null) {
-      setOutputDone();
-      return false;
+    // Input row
+    //
+    Object[] row = new Object[0];
+
+    // Only if we actually have previous steps to read from...
+    // This way the step also acts as an Cypher query step
+    //
+    if (data.hasInput) {
+      // Get a row of data from previous steps...
+      //
+      row = getRow();
+      if ( row == null ) {
+        // Signal next step(s) we're done processing
+        //
+        setOutputDone();
+        return false;
+      }
     }
 
     if (first) {
@@ -97,7 +109,7 @@ public class CypherOutput extends BaseStep implements StepInterface {
 
       // get the output fields...
       //
-      data.outputRowMeta = getInputRowMeta().clone();
+      data.outputRowMeta = data.hasInput ? getInputRowMeta().clone() : new RowMeta();
       meta.getFields( data.outputRowMeta, getStepname(), null, getStepMeta(), this, repository, metaStore );
 
       // Create a session
@@ -117,12 +129,15 @@ public class CypherOutput extends BaseStep implements StepInterface {
       data.cypher = environmentSubstitute( meta.getCypher() );
     }
 
-    // Assume Strings for now: TODO implement value mapping and conversion
+    // Do the value mapping and conversion to the parameters
     //
-    Map<String, Object> parameters = new HashMap<String, Object>();
+    Map<String, Object> parameters = new HashMap<>();
     for (int i=0;i<meta.getParameterMappings().size();i++) {
       ParameterMapping mapping = meta.getParameterMappings().get( i );
-      parameters.put(mapping.getParameter(), getInputRowMeta().getString( row, data.fieldIndexes[i] ));
+      ValueMetaInterface valueMeta = getInputRowMeta().getValueMeta( data.fieldIndexes[i] );
+      Object valueData = row[data.fieldIndexes[i]];
+      Object neoValue = mapping.convertFromKettle(valueMeta, valueData);
+      parameters.put(mapping.getParameter(), neoValue);
     }
 
     // Execute the cypher with all the parameters...
@@ -132,17 +147,17 @@ public class CypherOutput extends BaseStep implements StepInterface {
       result = data.session.run( data.cypher, parameters );
 
     } else {
-      if (data.recordsWritten==0) {
+      if (data.outputCount ==0) {
         data.transaction = data.session.beginTransaction();
       }
       result = data.transaction.run( data.cypher, parameters );
-      data.recordsWritten++;
+      data.outputCount++;
       incrementLinesOutput();
 
-      if (data.recordsWritten>=data.batchSize) {
+      if (data.outputCount >=data.batchSize) {
         data.transaction.success();
         data.transaction.close();
-        data.recordsWritten=0;
+        data.outputCount =0;
       }
     }
     int rowsWritten = 0;
@@ -155,12 +170,40 @@ public class CypherOutput extends BaseStep implements StepInterface {
 
       // add result values...
       //
-      int index=getInputRowMeta().size();
-      for ( NeoValueMeta neoValueMeta : meta.getReturnValues() ) {
-        Value recordValue = record.get( neoValueMeta.getName() );
-        // TODO: support other data types
-        //
-        String value = recordValue!=null ? recordValue.asString() : null;
+      int index=data.hasInput ? getInputRowMeta().size() : 0;
+      for ( ReturnValue returnValue : meta.getReturnValues() ) {
+        Value recordValue = record.get( returnValue.getName() );
+        ValueMetaInterface targetValueMeta = data.outputRowMeta.getValueMeta(index);
+        Object value = null;
+        if (recordValue!=null) {
+          switch ( targetValueMeta.getType() ) {
+            case ValueMetaInterface.TYPE_STRING:
+              value = recordValue.asString();
+              break;
+            case ValueMetaInterface.TYPE_INTEGER:
+              value = recordValue.asLong();
+              break;
+            case ValueMetaInterface.TYPE_NUMBER:
+              value = recordValue.asDouble();
+              break;
+            case ValueMetaInterface.TYPE_BOOLEAN:
+              value = recordValue.asBoolean();
+              break;
+            case ValueMetaInterface.TYPE_BIGNUMBER:
+              value = new BigDecimal( recordValue.asString() );
+              break;
+            case ValueMetaInterface.TYPE_DATE:
+              LocalDate localDate = recordValue.asLocalDate();
+              value = java.sql.Date.valueOf(localDate);
+              break;
+            case ValueMetaInterface.TYPE_TIMESTAMP:
+              LocalDateTime localDateTime = recordValue.asLocalDateTime();
+              value = java.sql.Timestamp.valueOf( localDateTime );
+              break;
+            default:
+              throw new KettleException( "Unable to convert Neo4j data to type "+targetValueMeta.toStringMeta() );
+          }
+        }
         outputRow[index++] = value;
       }
 
@@ -170,7 +213,7 @@ public class CypherOutput extends BaseStep implements StepInterface {
       rowsWritten++;
     }
 
-    if (rowsWritten==0) {
+    if (data.hasInput && rowsWritten==0) {
       // At least pass input row
 
       // Create output row
@@ -181,9 +224,13 @@ public class CypherOutput extends BaseStep implements StepInterface {
       putRow( data.outputRowMeta, outputRow);
     }
 
-
-
-
-    return true;
+    // Only keep executing if we have input rows...
+    //
+    if (data.hasInput) {
+      return true;
+    } else {
+      setOutputDone();
+      return false;
+    }
   }
 }

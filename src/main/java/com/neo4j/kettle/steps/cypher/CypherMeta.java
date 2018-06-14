@@ -1,13 +1,17 @@
 package com.neo4j.kettle.steps.graph_output;
 
-import com.neo4j.model.NeoValueMeta;
-import com.neo4j.model.NeoValueType;
+import com.neo4j.model.GraphProperty;
+import com.neo4j.model.GraphPropertyType;
+import org.apache.commons.lang.StringUtils;
 import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.exception.KettlePluginException;
+import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.core.row.value.ValueMetaFactory;
 import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.xml.XMLHandler;
@@ -19,6 +23,7 @@ import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDataInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
+import org.pentaho.di.trans.step.StepMetaInjectionInterface;
 import org.pentaho.di.trans.step.StepMetaInterface;
 import org.pentaho.metastore.api.IMetaStore;
 import org.w3c.dom.Node;
@@ -39,12 +44,12 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
   private String cypher;
   private String batchSize;
   private List<ParameterMapping> parameterMappings;
-  private List<NeoValueMeta> returnValues;
+  private List<ReturnValue> returnValues;
 
  public CypherOutputMeta() {
    super();
-   parameterMappings = new ArrayList<ParameterMapping>();
-   returnValues = new ArrayList<NeoValueMeta>();
+   parameterMappings = new ArrayList<>();
+   returnValues = new ArrayList<>();
   }
 
   @Override public void setDefault() {
@@ -64,19 +69,18 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
   }
 
   @Override public void getFields( RowMetaInterface rowMeta, String name, RowMetaInterface[] info, StepMeta nextStep, VariableSpace space,
-                                   Repository repository, IMetaStore metaStore ) {
+                                   Repository repository, IMetaStore metaStore ) throws KettleStepException  {
 
     // Check return values in the metadata...
-    for (NeoValueMeta neoValueMeta : returnValues) {
-      NeoValueType type = neoValueMeta.getType();
-      if (type==null) {
-        type = NeoValueType.String;
+    for (ReturnValue returnValue : returnValues) {
+      try {
+        int type = ValueMetaFactory.getIdForValueMeta( returnValue.getType() );
+        ValueMetaInterface valueMeta =  ValueMetaFactory.createValueMeta( returnValue.getName(), type);
+        valueMeta.setOrigin( name );
+        rowMeta.addValueMeta( new ValueMetaString( returnValue.getName()) );
+      } catch ( KettlePluginException e ) {
+        throw new KettleStepException( "Unknown data type '"+returnValue.getType()+"' for value named '"+returnValue.getName()+"'" );
       }
-      switch(type) {
-        case String:
-        default:
-          rowMeta.addValueMeta( new ValueMetaString(neoValueMeta.getName()) );
-      };
     }
 
 
@@ -88,20 +92,22 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
     xml.append( XMLHandler.addTagValue( "connection", connectionName) );
     xml.append( XMLHandler.addTagValue( "cypher", cypher) );
     xml.append( XMLHandler.addTagValue( "batch_size", batchSize) );
+
     xml.append( XMLHandler.openTag( "mappings") );
     for (ParameterMapping parameterMapping : parameterMappings) {
       xml.append( XMLHandler.openTag( "mapping") );
       xml.append( XMLHandler.addTagValue( "parameter", parameterMapping.getParameter()) );
       xml.append( XMLHandler.addTagValue( "field", parameterMapping.getField() ) );
+      xml.append( XMLHandler.addTagValue( "type", parameterMapping.getNeoType() ) );
       xml.append( XMLHandler.closeTag( "mapping") );
     }
     xml.append( XMLHandler.closeTag( "mappings") );
 
     xml.append( XMLHandler.openTag( "returns") );
-    for (NeoValueMeta returnValue : returnValues) {
+    for (ReturnValue returnValue : returnValues) {
       xml.append( XMLHandler.openTag( "return") );
       xml.append( XMLHandler.addTagValue( "name", returnValue.getName()) );
-      xml.append( XMLHandler.addTagValue( "type", NeoValueType.getCode( returnValue.getType() ) ) );
+      xml.append( XMLHandler.addTagValue( "type", returnValue.getType()) );
       xml.append( XMLHandler.closeTag( "return") );
     }
     xml.append( XMLHandler.closeTag( "returns") );
@@ -119,22 +125,26 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
     //
     Node mappingsNode = XMLHandler.getSubNode( stepnode, "mappings" );
     List<Node> mappingNodes = XMLHandler.getNodes( mappingsNode, "mapping" );
-    parameterMappings = new ArrayList<ParameterMapping>();
+    parameterMappings = new ArrayList<>();
     for (Node mappingNode : mappingNodes) {
       String parameter = XMLHandler.getTagValue( mappingNode, "parameter" );
       String field = XMLHandler.getTagValue( mappingNode, "field" );
-      parameterMappings.add(new ParameterMapping( parameter, field ));
+      String neoType = XMLHandler.getTagValue( mappingNode, "type" );
+      if ( StringUtils.isEmpty(neoType)) {
+        neoType = GraphPropertyType.String.name();
+      }
+      parameterMappings.add(new ParameterMapping( parameter, field, neoType ));
     }
 
     // Parse return values
     //
     Node returnsNode = XMLHandler.getSubNode( stepnode, "returns" );
     List<Node> returnNodes = XMLHandler.getNodes( returnsNode, "return" );
-    returnValues = new ArrayList<NeoValueMeta>();
+    returnValues = new ArrayList<>();
     for (Node returnNode : returnNodes) {
       String name = XMLHandler.getTagValue( returnNode, "name" );
-      NeoValueType type = NeoValueType.parseCode( XMLHandler.getTagValue( returnNode, "type" ) );
-      returnValues.add(new NeoValueMeta( name, type));
+      String type = XMLHandler.getTagValue( returnNode, "type" );
+      returnValues.add(new ReturnValue( name, type));
     }
 
     super.loadXML( stepnode, databases, metaStore );
@@ -146,13 +156,14 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
     rep.saveStepAttribute( id_transformation, id_step, "batch_size", batchSize);
     for (int i=0;i<parameterMappings.size();i++) {
       ParameterMapping parameterMapping = parameterMappings.get( i );
-      rep.saveStepAttribute( id_transformation, id_step, i, "parameter",  parameterMapping.getParameter());
-      rep.saveStepAttribute( id_transformation, id_step, i, "field",  parameterMapping.getField() );
+      rep.saveStepAttribute( id_transformation, id_step, i, "parameter_name",  parameterMapping.getParameter());
+      rep.saveStepAttribute( id_transformation, id_step, i, "parameter_field",  parameterMapping.getField() );
+      rep.saveStepAttribute( id_transformation, id_step, i, "parameter_type",  parameterMapping.getNeoType() );
     }
     for (int i=0;i<returnValues.size();i++) {
-      NeoValueMeta neoValueMeta = returnValues.get( i );
-      rep.saveStepAttribute( id_transformation, id_step, i, "return_name",  neoValueMeta.getName());
-      rep.saveStepAttribute( id_transformation, id_step, i, "return_type",  NeoValueType.getCode( neoValueMeta.getType() ) );
+      ReturnValue returnValue = returnValues.get( i );
+      rep.saveStepAttribute( id_transformation, id_step, i, "return_name",  returnValue.getName());
+      rep.saveStepAttribute( id_transformation, id_step, i, "return_type",  returnValue.getType());
     }
 
   }
@@ -161,19 +172,23 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
     connectionName = rep.getStepAttributeString( id_step, "connection" );
     cypher = rep.getStepAttributeString( id_step, "cypher" );
     batchSize = rep.getStepAttributeString( id_step, "batch_size" );
-    parameterMappings = new ArrayList<ParameterMapping>();
+    parameterMappings = new ArrayList<>();
     int nrMappings = rep.countNrStepAttributes( id_step, "parameter" );
     for (int i=0;i<nrMappings;i++) {
-      String parameter = rep.getStepAttributeString( id_step, i, "parameter" );
-      String cypher = rep.getStepAttributeString( id_step, i, "field" );
-      parameterMappings.add( new ParameterMapping( parameter, cypher) );
+      String parameter = rep.getStepAttributeString( id_step, i, "parameter_name" );
+      String field = rep.getStepAttributeString( id_step, i, "parameter_field" );
+      String neoType = rep.getStepAttributeString( id_step, i, "parameter_type" );
+      if ( StringUtils.isEmpty(neoType)) {
+        neoType = GraphPropertyType.String.name();
+      }
+      parameterMappings.add( new ParameterMapping( parameter, field, neoType) );
     }
-    returnValues = new ArrayList<NeoValueMeta>();
+    returnValues = new ArrayList<>();
     int nrReturns = rep.countNrStepAttributes( id_step, "return_name" );
     for (int i=0;i<nrReturns;i++) {
       String name = rep.getStepAttributeString( id_step, i, "return_name" );
-      NeoValueType type = NeoValueType.parseCode( rep.getStepAttributeString( id_step, i, "return_type" ) );
-      returnValues.add(new NeoValueMeta( name, type ));
+      String type = rep.getStepAttributeString( id_step, i, "return_type" );
+      returnValues.add(new ReturnValue( name, type ));
     }
 
   }
@@ -210,11 +225,11 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
     this.batchSize = batchSize;
   }
 
-  public List<NeoValueMeta> getReturnValues() {
+  public List<ReturnValue> getReturnValues() {
     return returnValues;
   }
 
-  public void setReturnValues( List<NeoValueMeta> returnValues ) {
+  public void setReturnValues( List<ReturnValue> returnValues ) {
     this.returnValues = returnValues;
   }
 }

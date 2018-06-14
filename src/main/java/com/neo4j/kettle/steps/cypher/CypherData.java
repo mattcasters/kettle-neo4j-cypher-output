@@ -1,5 +1,6 @@
 package com.neo4j.kettle.steps.graph_output;
 
+import com.neo4j.shared.NeoConnection;
 import org.neo4j.driver.v1.Driver;
 import org.neo4j.driver.v1.Session;
 import org.neo4j.driver.v1.Transaction;
@@ -14,7 +15,7 @@ import java.util.List;
 public class CypherOutputData extends BaseStepData implements StepDataInterface {
 
   public RowMetaInterface outputRowMeta;
-  public DatabaseMeta databaseMeta;
+  public NeoConnection neoConnection;
   public String url;
   public Driver driver;
   public Session session;
@@ -22,5 +23,6 @@ public class CypherOutputData extends BaseStepData implements StepDataInterface 
   public String cypher;
   public long batchSize;
   public Transaction transaction;
-  public long recordsWritten;
+  public long outputCount;
+  public boolean hasInput;
 }

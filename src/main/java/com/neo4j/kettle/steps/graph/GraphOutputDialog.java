@@ -1,11 +1,11 @@
-package com.neo4j.kettle.steps.graph_output;
+package com.neo4j.kettle.steps.cypher;
 
-import com.neo4j.model.NeoValueMeta;
-import com.neo4j.model.NeoValueType;
+import com.neo4j.model.GraphPropertyType;
+import com.neo4j.shared.NeoConnection;
+import com.neo4j.shared.NeoConnectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CCombo;
-import org.eclipse.swt.events.ModifyEvent;
 import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -17,54 +17,47 @@ import org.eclipse.swt.layout.FormLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 import org.pentaho.di.core.Const;
+import org.pentaho.di.core.row.value.ValueMetaFactory;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDialogInterface;
+import org.pentaho.di.ui.core.dialog.ErrorDialog;
 import org.pentaho.di.ui.core.widget.ColumnInfo;
 import org.pentaho.di.ui.core.widget.TableView;
 import org.pentaho.di.ui.core.widget.TextVar;
 import org.pentaho.di.ui.trans.step.BaseStepDialog;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-public class CypherOutputDialog extends BaseStepDialog implements StepDialogInterface {
+public class CypherDialog extends BaseStepDialog implements StepDialogInterface {
 
-  private static Class<?> PKG = CypherOutputMeta.class; // for i18n purposes, needed by Translator2!!
+  private static Class<?> PKG = CypherMeta.class; // for i18n purposes, needed by Translator2!!
 
-  private Label wlStepname;
   private Text wStepname;
 
-  private Label wlConnection;
   private CCombo wConnection;
 
-  private Label wlBatchSize;
   private TextVar wBatchSize;
 
-  private Label wlCypher;
   private TextVar wCypher;
 
-  private Label wlParameters;
   private TableView wParameters;
 
-  private Label wlReturns;
   private TableView wReturns;
 
-  private static String[] fieldNames;
+  private CypherMeta input;
 
-  private CypherOutputMeta input;
-
-  public CypherOutputDialog( Shell parent, Object inputMetadata, TransMeta transMeta, String stepname ) {
+  public CypherDialog( Shell parent, Object inputMetadata, TransMeta transMeta, String stepname ) {
     super( parent, (BaseStepMeta)inputMetadata, transMeta, stepname );
-    input = (CypherOutputMeta) inputMetadata;
+    input = (CypherMeta) inputMetadata;
   }
 
   @Override public String open() {
@@ -75,11 +68,7 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     props.setLook( shell );
     setShellImage( shell, input );
 
-    ModifyListener lsMod = new ModifyListener() {
-      public void modifyText( ModifyEvent e ) {
-        input.setChanged();
-      }
-    };
+    ModifyListener lsMod = e -> input.setChanged();
     changed = input.hasChanged();
 
     FormLayout formLayout = new FormLayout();
@@ -87,15 +76,14 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     formLayout.marginHeight = Const.FORM_MARGIN;
 
     shell.setLayout( formLayout );
-    shell.setText( "Neo4j Cypher Output" );
+    shell.setText( "Neo4j Cypher" );
 
     int middle = props.getMiddlePct();
     int margin = Const.MARGIN;
 
-
     // Step name line
     //
-    wlStepname = new Label( shell, SWT.RIGHT );
+    Label wlStepname = new Label( shell, SWT.RIGHT );
     wlStepname.setText( "Step name" );
     props.setLook( wlStepname );
     fdlStepname = new FormData();
@@ -113,7 +101,8 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     wStepname.setLayoutData( fdStepname );
     Control lastControl = wStepname;
 
-    wlConnection = new Label( shell, SWT.RIGHT );
+
+    Label wlConnection = new Label( shell, SWT.RIGHT );
     wlConnection.setText( "Connection" );
     props.setLook( wlConnection );
     FormData fdlConnection = new FormData();
@@ -121,17 +110,32 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     fdlConnection.right = new FormAttachment( middle, -margin );
     fdlConnection.top = new FormAttachment( lastControl, 2*margin );
     wlConnection.setLayoutData( fdlConnection );
+
+    Button wEditConnection = new Button( shell, SWT.PUSH | SWT.BORDER );
+    wEditConnection.setText( BaseMessages.getString(PKG, "System.Button.Edit") );
+    FormData fdEditConnection = new FormData();
+    fdEditConnection.top = new FormAttachment( wlConnection, 0, SWT.CENTER );
+    fdEditConnection.right = new FormAttachment( 100, 0 );
+    wEditConnection.setLayoutData( fdEditConnection );
+
+    Button wNewConnection = new Button( shell, SWT.PUSH | SWT.BORDER );
+    wNewConnection.setText( BaseMessages.getString(PKG, "System.Button.New") );
+    FormData fdNewConnection = new FormData();
+    fdNewConnection.top = new FormAttachment( wlConnection, 0, SWT.CENTER );
+    fdNewConnection.right = new FormAttachment( wEditConnection, -margin );
+    wNewConnection.setLayoutData( fdNewConnection );
+
     wConnection = new CCombo( shell, SWT.SINGLE | SWT.LEFT | SWT.BORDER );
     props.setLook( wConnection );
     wConnection.addModifyListener( lsMod );
     FormData fdConnection = new FormData();
     fdConnection.left = new FormAttachment( middle, 0 );
-    fdConnection.right = new FormAttachment( 100, 0 );
+    fdConnection.right = new FormAttachment( wNewConnection, -margin );
     fdConnection.top = new FormAttachment( wlConnection, 0, SWT.CENTER );
     wConnection.setLayoutData( fdConnection );
     lastControl = wConnection;
 
-    wlBatchSize = new Label( shell, SWT.RIGHT );
+    Label wlBatchSize = new Label( shell, SWT.RIGHT );
     wlBatchSize.setText( "Batch size (rows)" );
     props.setLook( wlBatchSize );
     FormData fdlBatchSize = new FormData();
@@ -149,7 +153,7 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     wBatchSize.setLayoutData( fdBatchSize );
     lastControl = wBatchSize;
 
-    wlCypher = new Label( shell, SWT.LEFT);
+    Label wlCypher = new Label( shell, SWT.LEFT );
     wlCypher.setText( "Cypher" );
     props.setLook( wlCypher );
     FormData fdlServers = new FormData();
@@ -178,6 +182,7 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     //
     setButtonPositions( new Button[] { wOK, wCancel }, margin, null );
 
+    String[] fieldNames;
     try {
       fieldNames = transMeta.getPrevStepFields( stepname ).getFieldNames();
     } catch(Exception e) {
@@ -191,9 +196,10 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
       new ColumnInfo[] {
         new ColumnInfo( "Parameter", ColumnInfo.COLUMN_TYPE_TEXT, false ),
         new ColumnInfo( "Field", ColumnInfo.COLUMN_TYPE_CCOMBO, fieldNames, false ),
+        new ColumnInfo( "Neo4j Type", ColumnInfo.COLUMN_TYPE_CCOMBO, GraphPropertyType.getNames(), false ),
       };
 
-    wlParameters = new Label( shell, SWT.LEFT);
+    Label wlParameters = new Label( shell, SWT.LEFT );
     wlParameters.setText( "Parameters" );
     props.setLook( wlParameters );
     FormData fdlParameters = new FormData();
@@ -217,10 +223,10 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     ColumnInfo[] returnColumns =
       new ColumnInfo[] {
         new ColumnInfo( "Field name", ColumnInfo.COLUMN_TYPE_TEXT, false ),
-        new ColumnInfo( "Return type", ColumnInfo.COLUMN_TYPE_CCOMBO, new String[] { "String" }, false ),
+        new ColumnInfo( "Return type", ColumnInfo.COLUMN_TYPE_CCOMBO, ValueMetaFactory.getAllValueMetaNames(), false ),
       };
 
-    wlReturns = new Label( shell, SWT.LEFT);
+    Label wlReturns = new Label( shell, SWT.LEFT );
     wlReturns.setText( "Returns" );
     props.setLook( wlReturns );
     FormData fdlReturns = new FormData();
@@ -237,20 +243,12 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     fdReturns.top = new FormAttachment( wlReturns, margin);
     fdReturns.bottom = new FormAttachment( wlReturns, 200+margin);
     wReturns.setLayoutData( fdReturns );
-    lastControl = wReturns;
+    // lastControl = wReturns;
 
 
     // Add listeners
-    lsCancel = new Listener() {
-      public void handleEvent( Event e ) {
-        cancel();
-      }
-    };
-    lsOK = new Listener() {
-      public void handleEvent( Event e ) {
-        ok();
-      }
-    };
+    lsCancel = e -> cancel();
+    lsOK = e -> ok();
 
     wCancel.addListener( SWT.Selection, lsCancel );
     wOK.addListener( SWT.Selection, lsOK );
@@ -264,6 +262,17 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     wConnection.addSelectionListener( lsDef );
     wStepname.addSelectionListener( lsDef );
     wBatchSize.addSelectionListener( lsDef );
+
+    wNewConnection.addSelectionListener( new SelectionAdapter() {
+      @Override public void widgetSelected( SelectionEvent selectionEvent ) {
+        newConnection();
+      }
+    } );
+    wEditConnection.addSelectionListener( new SelectionAdapter() {
+      @Override public void widgetSelected( SelectionEvent selectionEvent ) {
+        editConnection();
+      }
+    } );
 
     // Detect X or ALT-F4 or something that kills this window...
     shell.addShellListener( new ShellAdapter() {
@@ -298,7 +307,17 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
 
     wStepname.setText( Const.NVL( stepname, "" ) );
     wConnection.setText(Const.NVL(input.getConnectionName(), "") );
-    wConnection.setItems( transMeta.getDatabaseNames() );
+
+    // List of connections...
+    //
+    try {
+      List<String> elementNames = NeoConnectionUtils.getConnectionFactory( metaStore ).getElementNames();
+      Collections.sort(elementNames);
+      wConnection.setItems(elementNames.toArray( new String[ 0 ] ));
+    } catch(Exception e) {
+      new ErrorDialog( shell, "Error", "Unable to list Neo4j connections", e );
+    }
+
     wBatchSize.setText(Const.NVL(input.getBatchSize(), "") );
     wCypher.setText(Const.NVL(input.getCypher(), "") );
 
@@ -307,16 +326,17 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
       TableItem item = wParameters.table.getItem( i );
       item.setText( 1, Const.NVL(mapping.getParameter(), ""));
       item.setText( 2, Const.NVL(mapping.getField(), ""));
+      item.setText( 3, Const.NVL(mapping.getNeoType(), ""));
     }
     wParameters.removeEmptyRows();
     wParameters.setRowNums();
     wParameters.optWidth( true );
 
     for (int i=0;i<input.getReturnValues().size();i++) {
-      NeoValueMeta neoValueMeta = input.getReturnValues().get( i );
+      ReturnValue returnValue = input.getReturnValues().get( i );
       TableItem item = wReturns.table.getItem( i );
-      item.setText( 1, Const.NVL(neoValueMeta.getName(), ""));
-      item.setText( 2, NeoValueType.getCode( neoValueMeta.getType() ));
+      item.setText( 1, Const.NVL( returnValue.getName(), "") );
+      item.setText( 2, Const.NVL( returnValue.getType(), "") );
     }
     wReturns.removeEmptyRows();
     wReturns.setRowNums();
@@ -333,21 +353,31 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     input.setBatchSize( wBatchSize.getText() );
     input.setCypher( wCypher.getText() );
 
-    List<ParameterMapping> mappings = new ArrayList<ParameterMapping>(  );
+    List<ParameterMapping> mappings = new ArrayList<>();
     for (int i = 0;i<wParameters.nrNonEmpty();i++) {
       TableItem item = wParameters.getNonEmpty( i );
-      mappings.add( new ParameterMapping( item.getText(1), item.getText(2)) );
+      mappings.add( new ParameterMapping( item.getText(1), item.getText(2), item.getText(3)) );
     }
     input.setParameterMappings( mappings );
 
-    List<NeoValueMeta> returnValues = new ArrayList<NeoValueMeta>();
+    List<ReturnValue> returnValues = new ArrayList<>();
     for (int i = 0;i<wReturns.nrNonEmpty();i++) {
       TableItem item = wReturns.getNonEmpty( i );
-      returnValues.add( new NeoValueMeta( item.getText(1), NeoValueType.parseCode( item.getText(2))) );
+      returnValues.add( new ReturnValue( item.getText(1), item.getText(2)) );
     }
     input.setReturnValues( returnValues );
 
     dispose();
   }
 
+  protected void newConnection() {
+    NeoConnection connection = NeoConnectionUtils.newConnection( shell, transMeta, NeoConnectionUtils.getConnectionFactory( metaStore ) );
+    if (connection!=null) {
+      wConnection.setText(connection.getName());
+    }
+  }
+
+  protected void editConnection() {
+    NeoConnectionUtils.editConnection( shell, transMeta, NeoConnectionUtils.getConnectionFactory( metaStore ), wConnection.getText() );
+  }
 }
