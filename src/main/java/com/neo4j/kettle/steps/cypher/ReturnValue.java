@@ -1,4 +1,4 @@
-package com.neo4j.kettle.steps.graph_output;
+package com.neo4j.kettle.steps.cypher;
 
 public class ReturnValue {
   private String name;

@@ -1,5 +1,6 @@
-package com.neo4j.kettle.steps.graph_output;
+package com.neo4j.kettle.steps.cypher;
 
+import com.neo4j.model.GraphPropertyType;
 import com.neo4j.shared.NeoConnectionUtils;
 import org.neo4j.driver.v1.Record;
 import org.neo4j.driver.v1.StatementResult;
@@ -26,18 +27,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class CypherOutput extends BaseStep implements StepInterface {
+public class Cypher extends BaseStep implements StepInterface {
 
-  public CypherOutput( StepMeta stepMeta, StepDataInterface stepDataInterface, int copyNr,
-                       TransMeta transMeta, Trans trans ) {
+  public Cypher( StepMeta stepMeta, StepDataInterface stepDataInterface, int copyNr,
+                 TransMeta transMeta, Trans trans ) {
     super( stepMeta, stepDataInterface, copyNr, transMeta, trans );
   }
 
 
   @Override public boolean init( StepMetaInterface smi, StepDataInterface sdi ) {
 
-    CypherOutputMeta meta = (CypherOutputMeta) smi;
-    CypherOutputData data = (CypherOutputData)sdi;
+    CypherMeta meta = (CypherMeta) smi;
+    CypherData data = (CypherData)sdi;
 
     // Is the step getting input?
     //
@@ -67,7 +68,7 @@ public class CypherOutput extends BaseStep implements StepInterface {
 
   @Override public void dispose( StepMetaInterface smi, StepDataInterface sdi ) {
 
-    CypherOutputData data = (CypherOutputData)sdi;
+    CypherData data = (CypherData)sdi;
 
     if (data.outputCount >0) {
       data.transaction.success();
@@ -82,15 +83,15 @@ public class CypherOutput extends BaseStep implements StepInterface {
 
   @Override public boolean processRow( StepMetaInterface smi, StepDataInterface sdi ) throws KettleException {
 
-    CypherOutputMeta meta = (CypherOutputMeta) smi;
-    CypherOutputData data = (CypherOutputData)sdi;
+    CypherMeta meta = (CypherMeta) smi;
+    CypherData data = (CypherData)sdi;
 
     // Input row
     //
     Object[] row = new Object[0];
 
     // Only if we actually have previous steps to read from...
-    // This way the step also acts as an Cypher query step
+    // This way the step also acts as an GraphOutput query step
     //
     if (data.hasInput) {
       // Get a row of data from previous steps...
@@ -136,7 +137,11 @@ public class CypherOutput extends BaseStep implements StepInterface {
       ParameterMapping mapping = meta.getParameterMappings().get( i );
       ValueMetaInterface valueMeta = getInputRowMeta().getValueMeta( data.fieldIndexes[i] );
       Object valueData = row[data.fieldIndexes[i]];
-      Object neoValue = mapping.convertFromKettle(valueMeta, valueData);
+      GraphPropertyType propertyType = GraphPropertyType.parseCode( mapping.getNeoType() );
+      if (propertyType==null) {
+        throw new KettleException( "Unable to convert to unknown property type for field '"+valueMeta.toStringMeta()+"'" );
+      }
+      Object neoValue = propertyType.convertFromKettle(valueMeta, valueData);
       parameters.put(mapping.getParameter(), neoValue);
     }
 
@@ -145,7 +150,6 @@ public class CypherOutput extends BaseStep implements StepInterface {
     StatementResult result;
     if (data.batchSize<=1) {
       result = data.session.run( data.cypher, parameters );
-
     } else {
       if (data.outputCount ==0) {
         data.transaction = data.session.beginTransaction();

@@ -1,15 +1,33 @@
 package com.neo4j.model;
 
-public class NeoValueMeta {
-  private String name;
-  private NeoValueType type;
+import org.pentaho.di.core.exception.KettleValueException;
+import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.metastore.persist.MetaStoreAttribute;
 
-  public NeoValueMeta() {
+import java.time.ZoneId;
+
+public class GraphProperty {
+
+  @MetaStoreAttribute
+  private String name;
+
+  @MetaStoreAttribute
+  private String description;
+
+  @MetaStoreAttribute
+  private GraphPropertyType type;
+
+  @MetaStoreAttribute
+  private boolean primary;
+
+  public GraphProperty() {
   }
 
-  public NeoValueMeta( String name, NeoValueType type ) {
+  public GraphProperty( String name, String description, GraphPropertyType type, boolean primary ) {
     this.name = name;
+    this.description = description;
     this.type = type;
+    this.primary = primary;
   }
 
   public String getName() {
@@ -20,11 +38,27 @@ public class NeoValueMeta {
     this.name = name;
   }
 
-  public NeoValueType getType() {
+  public String getDescription() {
+    return description;
+  }
+
+  public void setDescription( String description ) {
+    this.description = description;
+  }
+
+  public GraphPropertyType getType() {
     return type;
   }
 
-  public void setType( NeoValueType type ) {
+  public void setType( GraphPropertyType type ) {
     this.type = type;
+  }
+
+  public boolean isPrimary() {
+    return primary;
+  }
+
+  public void setPrimary( boolean primary ) {
+    this.primary = primary;
   }
 }

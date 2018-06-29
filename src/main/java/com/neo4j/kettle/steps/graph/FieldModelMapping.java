@@ -1,32 +1,44 @@
 package com.neo4j.kettle.steps.graph;
 
+import com.neo4j.model.GraphProperty;
 import com.neo4j.model.GraphPropertyType;
 import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.ValueMetaInterface;
 
 import java.time.ZoneId;
 
-public class ParameterMapping {
+public class FieldModelMapping {
 
-  private String parameter;
+  /**
+   * The Kettle input field where the data is coming from
+   */
   private String field;
-  private String neoType;
 
-  public ParameterMapping() {
+  /**
+   * Write to a node or a relationship
+   */
+  private ModelTargetType targetType;
+
+  /**
+   * Name of the node or relationship to write to
+   */
+  private String targetName;
+
+  /**
+   * Name of the property to write to
+   */
+  private String targetProperty;
+
+
+  public FieldModelMapping() {
+    targetType = ModelTargetType.Node;
   }
 
-  public ParameterMapping( String parameter, String field, String neoType ) {
-    this.parameter = parameter;
+  public FieldModelMapping( String field, ModelTargetType targetType, String targetName, String targetProperty ) {
     this.field = field;
-    this.neoType = neoType;
-  }
-
-  public String getParameter() {
-    return parameter;
-  }
-
-  public void setParameter( String parameter ) {
-    this.parameter = parameter;
+    this.targetType = targetType;
+    this.targetName = targetName;
+    this.targetProperty = targetProperty;
   }
 
   public String getField() {
@@ -37,40 +49,27 @@ public class ParameterMapping {
     this.field = field;
   }
 
-  public String getNeoType() {
-    return neoType;
+  public ModelTargetType getTargetType() {
+    return targetType;
   }
 
-  public void setNeoType( String neoType ) {
-    this.neoType = neoType;
+  public void setTargetType( ModelTargetType targetType ) {
+    this.targetType = targetType;
   }
 
-  /**
-   * Convert the given Kettle value to a Neo4j data type
-   * @param valueMeta
-   * @param valueData
-   * @return
-   */
-  public Object convertFromKettle( ValueMetaInterface valueMeta, Object valueData ) throws KettleValueException {
-    GraphPropertyType type = GraphPropertyType.parseCode( neoType );
-    if (valueMeta.isNull(valueData)) {
-      return null;
-    }
-    switch(type) {
-      case String: return valueMeta.getString( valueData );
-      case Boolean: return valueMeta.getBoolean( valueData );
-      case Float: return valueMeta.getNumber( valueData );
-      case Integer: return valueMeta.getInteger( valueData );
-      case Date: return valueMeta.getDate( valueData ).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-      case LocalDateTime: return valueMeta.getDate( valueData ).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-      case ByteArray: return valueMeta.getBinary( valueData );
-      case Duration:
-      case DateTime:
-      case Time:
-      case Point:
-      case LocalTime:
-      default:
-        throw new KettleValueException( "Data conversion to Neo4j type '"+neoType+"' of parameter '"+parameter+"' is not supported yet" );
-    }
+  public String getTargetName() {
+    return targetName;
+  }
+
+  public void setTargetName( String targetName ) {
+    this.targetName = targetName;
+  }
+
+  public String getTargetProperty() {
+    return targetProperty;
+  }
+
+  public void setTargetProperty( String targetProperty ) {
+    this.targetProperty = targetProperty;
   }
 }

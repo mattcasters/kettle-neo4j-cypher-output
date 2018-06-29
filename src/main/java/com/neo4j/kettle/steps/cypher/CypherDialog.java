@@ -1,6 +1,5 @@
-package com.neo4j.kettle.steps.graph_output;
+package com.neo4j.kettle.steps.cypher;
 
-import com.neo4j.model.GraphProperty;
 import com.neo4j.model.GraphPropertyType;
 import com.neo4j.shared.NeoConnection;
 import com.neo4j.shared.NeoConnectionUtils;
@@ -38,9 +37,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class CypherOutputDialog extends BaseStepDialog implements StepDialogInterface {
+public class CypherDialog extends BaseStepDialog implements StepDialogInterface {
 
-  private static Class<?> PKG = CypherOutputMeta.class; // for i18n purposes, needed by Translator2!!
+  private static Class<?> PKG = CypherMeta.class; // for i18n purposes, needed by Translator2!!
 
   private Text wStepname;
 
@@ -54,11 +53,11 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
 
   private TableView wReturns;
 
-  private CypherOutputMeta input;
+  private CypherMeta input;
 
-  public CypherOutputDialog( Shell parent, Object inputMetadata, TransMeta transMeta, String stepname ) {
+  public CypherDialog( Shell parent, Object inputMetadata, TransMeta transMeta, String stepname ) {
     super( parent, (BaseStepMeta)inputMetadata, transMeta, stepname );
-    input = (CypherOutputMeta) inputMetadata;
+    input = (CypherMeta) inputMetadata;
   }
 
   @Override public String open() {
@@ -77,7 +76,7 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     formLayout.marginHeight = Const.FORM_MARGIN;
 
     shell.setLayout( formLayout );
-    shell.setText( "Neo4j Cypher Output" );
+    shell.setText( "Cypher" );
 
     int middle = props.getMiddlePct();
     int margin = Const.MARGIN;
@@ -155,7 +154,7 @@ public class CypherOutputDialog extends BaseStepDialog implements StepDialogInte
     lastControl = wBatchSize;
 
     Label wlCypher = new Label( shell, SWT.LEFT );
-    wlCypher.setText( "Cypher" );
+    wlCypher.setText( "GraphOutput" );
     props.setLook( wlCypher );
     FormData fdlServers = new FormData();
     fdlServers.left = new FormAttachment( 0, 0 );

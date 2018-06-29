@@ -1,17 +1,13 @@
-package com.neo4j.kettle.steps.cypher;
+package com.neo4j.kettle.steps.graph;
+
 
 import com.neo4j.model.GraphPropertyType;
 import org.apache.commons.lang.StringUtils;
 import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
-import org.pentaho.di.core.exception.KettlePluginException;
-import org.pentaho.di.core.exception.KettleStepException;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.row.RowMetaInterface;
-import org.pentaho.di.core.row.ValueMetaInterface;
-import org.pentaho.di.core.row.value.ValueMetaFactory;
-import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.repository.ObjectId;
@@ -30,24 +26,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Step(
-  id = "Neo4jCypherOutput",
-  name = "Neo4j Cypher",
-  description = "Reads from or writes to Neo4j using Cypher with parameter data from input fields",
+  id = "Neo4jGraphOutput",
+  name = "Neo4j Graph Output",
+  description = "Write to a Neo4j graph using an input field mapping",
   image = "neo4j_logo.svg",
   categoryDescription = "Neo4j"
 )
-public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
+public class GraphOutputMeta extends BaseStepMeta implements StepMetaInterface {
 
   private String connectionName;
-  private String cypher;
+  private String model;
   private String batchSize;
-  private List<ParameterMapping> parameterMappings;
-  private List<ReturnValue> returnValues;
+  private List<FieldModelMapping> fieldModelMappings;
 
- public CypherMeta() {
+
+ public GraphOutputMeta() {
    super();
-   parameterMappings = new ArrayList<>();
-   returnValues = new ArrayList<>();
+   fieldModelMappings = new ArrayList<>();
+
   }
 
   @Override public void setDefault() {
@@ -55,32 +51,19 @@ public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
   }
 
   @Override public StepInterface getStep( StepMeta stepMeta, StepDataInterface stepDataInterface, int i, TransMeta transMeta, Trans trans ) {
-    return new Cypher( stepMeta, stepDataInterface, i, transMeta, trans );
+    return new GraphOutput( stepMeta, stepDataInterface, i, transMeta, trans );
   }
 
   @Override public StepDataInterface getStepData() {
-    return new CypherData();
+    return new GraphOutputData();
   }
 
   @Override public String getDialogClassName() {
-    return CypherDialog.class.getName();
+    return GraphOutputDialog.class.getName();
   }
 
   @Override public void getFields( RowMetaInterface rowMeta, String name, RowMetaInterface[] info, StepMeta nextStep, VariableSpace space,
-                                   Repository repository, IMetaStore metaStore ) throws KettleStepException  {
-
-    // Check return values in the metadata...
-    for (ReturnValue returnValue : returnValues) {
-      try {
-        int type = ValueMetaFactory.getIdForValueMeta( returnValue.getType() );
-        ValueMetaInterface valueMeta =  ValueMetaFactory.createValueMeta( returnValue.getName(), type);
-        valueMeta.setOrigin( name );
-        rowMeta.addValueMeta( new ValueMetaString( returnValue.getName()) );
-      } catch ( KettlePluginException e ) {
-        throw new KettleStepException( "Unknown data type '"+returnValue.getType()+"' for value named '"+returnValue.getName()+"'" );
-      }
-    }
-
+                                   Repository repository, IMetaStore metaStore ) {
 
    // No output fields for now
   }
@@ -88,61 +71,40 @@ public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
   @Override public String getXML() {
     StringBuilder xml = new StringBuilder( );
     xml.append( XMLHandler.addTagValue( "connection", connectionName) );
-    xml.append( XMLHandler.addTagValue( "cypher", cypher) );
+    xml.append( XMLHandler.addTagValue( "model", model) );
     xml.append( XMLHandler.addTagValue( "batch_size", batchSize) );
 
     xml.append( XMLHandler.openTag( "mappings") );
-    for (ParameterMapping parameterMapping : parameterMappings) {
+    for (FieldModelMapping fieldModelMapping : fieldModelMappings ) {
       xml.append( XMLHandler.openTag( "mapping") );
-      xml.append( XMLHandler.addTagValue( "parameter", parameterMapping.getParameter()) );
-      xml.append( XMLHandler.addTagValue( "field", parameterMapping.getField() ) );
-      xml.append( XMLHandler.addTagValue( "type", parameterMapping.getNeoType() ) );
+      xml.append( XMLHandler.addTagValue( "source_field", fieldModelMapping.getField() ) );
+      xml.append( XMLHandler.addTagValue( "target_type", ModelTargetType.getCode( fieldModelMapping.getTargetType()) ) );
+      xml.append( XMLHandler.addTagValue( "target_name", fieldModelMapping.getTargetName() ) );
+      xml.append( XMLHandler.addTagValue( "target_property", fieldModelMapping.getTargetProperty() ) );
       xml.append( XMLHandler.closeTag( "mapping") );
     }
     xml.append( XMLHandler.closeTag( "mappings") );
-
-    xml.append( XMLHandler.openTag( "returns") );
-    for (ReturnValue returnValue : returnValues) {
-      xml.append( XMLHandler.openTag( "return") );
-      xml.append( XMLHandler.addTagValue( "name", returnValue.getName()) );
-      xml.append( XMLHandler.addTagValue( "type", returnValue.getType()) );
-      xml.append( XMLHandler.closeTag( "return") );
-    }
-    xml.append( XMLHandler.closeTag( "returns") );
-
 
     return xml.toString();
   }
 
   @Override public void loadXML( Node stepnode, List<DatabaseMeta> databases, IMetaStore metaStore ) throws KettleXMLException {
     connectionName = XMLHandler.getTagValue( stepnode, "connection" );
-    cypher = XMLHandler.getTagValue( stepnode, "cypher" );
+    model = XMLHandler.getTagValue( stepnode, "model" );
     batchSize = XMLHandler.getTagValue( stepnode, "batch_size" );
 
     // Parse parameter mappings
     //
     Node mappingsNode = XMLHandler.getSubNode( stepnode, "mappings" );
     List<Node> mappingNodes = XMLHandler.getNodes( mappingsNode, "mapping" );
-    parameterMappings = new ArrayList<>();
+    fieldModelMappings = new ArrayList<>();
     for (Node mappingNode : mappingNodes) {
-      String parameter = XMLHandler.getTagValue( mappingNode, "parameter" );
-      String field = XMLHandler.getTagValue( mappingNode, "field" );
-      String neoType = XMLHandler.getTagValue( mappingNode, "type" );
-      if ( StringUtils.isEmpty(neoType)) {
-        neoType = GraphPropertyType.String.name();
-      }
-      parameterMappings.add(new ParameterMapping( parameter, field, neoType ));
-    }
+      String field = XMLHandler.getTagValue( mappingNode, "source_field" );
+      ModelTargetType targetType = ModelTargetType.parseCode( XMLHandler.getTagValue( mappingNode, "target_type" ) );
+      String targetName = XMLHandler.getTagValue( mappingNode, "target_name" );
+      String targetProperty = XMLHandler.getTagValue( mappingNode, "target_property" );
 
-    // Parse return values
-    //
-    Node returnsNode = XMLHandler.getSubNode( stepnode, "returns" );
-    List<Node> returnNodes = XMLHandler.getNodes( returnsNode, "return" );
-    returnValues = new ArrayList<>();
-    for (Node returnNode : returnNodes) {
-      String name = XMLHandler.getTagValue( returnNode, "name" );
-      String type = XMLHandler.getTagValue( returnNode, "type" );
-      returnValues.add(new ReturnValue( name, type));
+      fieldModelMappings.add(new FieldModelMapping( field, targetType, targetName, targetProperty));
     }
 
     super.loadXML( stepnode, databases, metaStore );
@@ -150,43 +112,31 @@ public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
 
   @Override public void saveRep( Repository rep, IMetaStore metaStore, ObjectId id_transformation, ObjectId id_step ) throws KettleException {
     rep.saveStepAttribute( id_transformation, id_step, "connection", connectionName);
-    rep.saveStepAttribute( id_transformation, id_step, "cypher", cypher);
+    rep.saveStepAttribute( id_transformation, id_step, "model", model );
     rep.saveStepAttribute( id_transformation, id_step, "batch_size", batchSize);
-    for (int i=0;i<parameterMappings.size();i++) {
-      ParameterMapping parameterMapping = parameterMappings.get( i );
-      rep.saveStepAttribute( id_transformation, id_step, i, "parameter_name",  parameterMapping.getParameter());
-      rep.saveStepAttribute( id_transformation, id_step, i, "parameter_field",  parameterMapping.getField() );
-      rep.saveStepAttribute( id_transformation, id_step, i, "parameter_type",  parameterMapping.getNeoType() );
-    }
-    for (int i=0;i<returnValues.size();i++) {
-      ReturnValue returnValue = returnValues.get( i );
-      rep.saveStepAttribute( id_transformation, id_step, i, "return_name",  returnValue.getName());
-      rep.saveStepAttribute( id_transformation, id_step, i, "return_type",  returnValue.getType());
+    for ( int i = 0; i< fieldModelMappings.size(); i++) {
+      FieldModelMapping fieldModelMapping = fieldModelMappings.get( i );
+      rep.saveStepAttribute( id_transformation, id_step, i, "source_field",  fieldModelMapping.getField());
+      rep.saveStepAttribute( id_transformation, id_step, i, "target_type",  ModelTargetType.getCode( fieldModelMapping.getTargetType() ));
+      rep.saveStepAttribute( id_transformation, id_step, i, "target_name",  fieldModelMapping.getField());
+      rep.saveStepAttribute( id_transformation, id_step, i, "target_property",  fieldModelMapping.getField());
     }
 
   }
 
   @Override public void readRep( Repository rep, IMetaStore metaStore, ObjectId id_step, List<DatabaseMeta> databases ) throws KettleException {
     connectionName = rep.getStepAttributeString( id_step, "connection" );
-    cypher = rep.getStepAttributeString( id_step, "cypher" );
+    model = rep.getStepAttributeString( id_step, "model" );
     batchSize = rep.getStepAttributeString( id_step, "batch_size" );
-    parameterMappings = new ArrayList<>();
-    int nrMappings = rep.countNrStepAttributes( id_step, "parameter" );
+    fieldModelMappings = new ArrayList<>();
+    int nrMappings = rep.countNrStepAttributes( id_step, "source_field" );
     for (int i=0;i<nrMappings;i++) {
-      String parameter = rep.getStepAttributeString( id_step, i, "parameter_name" );
-      String field = rep.getStepAttributeString( id_step, i, "parameter_field" );
-      String neoType = rep.getStepAttributeString( id_step, i, "parameter_type" );
-      if ( StringUtils.isEmpty(neoType)) {
-        neoType = GraphPropertyType.String.name();
-      }
-      parameterMappings.add( new ParameterMapping( parameter, field, neoType) );
-    }
-    returnValues = new ArrayList<>();
-    int nrReturns = rep.countNrStepAttributes( id_step, "return_name" );
-    for (int i=0;i<nrReturns;i++) {
-      String name = rep.getStepAttributeString( id_step, i, "return_name" );
-      String type = rep.getStepAttributeString( id_step, i, "return_type" );
-      returnValues.add(new ReturnValue( name, type ));
+      String field = rep.getStepAttributeString( id_step, i, "source_field" );
+      ModelTargetType targetType = ModelTargetType.parseCode( rep.getStepAttributeString( id_step, i, "target_type" ) );
+      String targetName = rep.getStepAttributeString( id_step, i, "target_name" );
+      String targetProperty = rep.getStepAttributeString( id_step, i, "target_property" );
+
+      fieldModelMappings.add(new FieldModelMapping( field, targetType, targetName, targetProperty));
     }
 
   }
@@ -199,20 +149,20 @@ public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
     this.connectionName = connectionName;
   }
 
-  public String getCypher() {
-    return cypher;
+  public String getModel() {
+    return model;
   }
 
-  public void setCypher( String cypher ) {
-    this.cypher = cypher;
+  public void setModel( String model ) {
+    this.model = model;
   }
 
-  public List<ParameterMapping> getParameterMappings() {
-    return parameterMappings;
+  public List<FieldModelMapping> getFieldModelMappings() {
+    return fieldModelMappings;
   }
 
-  public void setParameterMappings( List<ParameterMapping> parameterMappings ) {
-    this.parameterMappings = parameterMappings;
+  public void setFieldModelMappings( List<FieldModelMapping> fieldModelMappings ) {
+    this.fieldModelMappings = fieldModelMappings;
   }
 
   public String getBatchSize() {
@@ -223,11 +173,5 @@ public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
     this.batchSize = batchSize;
   }
 
-  public List<ReturnValue> getReturnValues() {
-    return returnValues;
-  }
 
-  public void setReturnValues( List<ReturnValue> returnValues ) {
-    this.returnValues = returnValues;
-  }
 }

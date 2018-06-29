@@ -1,20 +1,9 @@
-package com.neo4j.model;
+package com.neo4j.kettle.steps.graph;
 
-import java.util.Arrays;
-
-public enum GraphPropertyType {
-  String,
-  Integer,
-  Float,
-  Boolean,
-  Date,
-  LocalDateTime,
-  ByteArray,
-  Time,
-  Point,
-  Duration,
-  LocalTime,
-  DateTime
+public enum ModelTargetType {
+  Unmapped,
+  Node,
+  Relationship,
   ;
 
   /** Get the code for a type, handles the null case
@@ -23,7 +12,7 @@ public enum GraphPropertyType {
    * @return
    */
 
-    public static String getCode(GraphPropertyType type) {
+    public static String getCode( ModelTargetType type) {
       if (type==null) {
         return null;
       }
@@ -31,19 +20,19 @@ public enum GraphPropertyType {
     }
 
   /**
-   * Default to String in case we can't recognize the code or is null
+   * Default to Unmapped in case we can't recognize the code or is null
    *
    * @param code
    * @return
    */
-  public static GraphPropertyType parseCode( String code) {
+  public static ModelTargetType parseCode( String code) {
       if (code==null) {
-        return String;
+        return Unmapped;
       }
       try {
-        return GraphPropertyType.valueOf( code );
+        return ModelTargetType.valueOf( code );
       } catch(IllegalArgumentException e) {
-        return String;
+        return Unmapped;
       }
     }
 

@@ -1,18 +1,14 @@
-package com.neo4j.kettle.steps.graph_output;
+package com.neo4j.kettle.steps.cypher;
 
 import com.neo4j.shared.NeoConnection;
 import org.neo4j.driver.v1.Driver;
 import org.neo4j.driver.v1.Session;
 import org.neo4j.driver.v1.Transaction;
-import org.pentaho.di.core.database.DatabaseMeta;
-import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.trans.step.BaseStepData;
 import org.pentaho.di.trans.step.StepDataInterface;
 
-import java.util.List;
-
-public class CypherOutputData extends BaseStepData implements StepDataInterface {
+public class CypherData extends BaseStepData implements StepDataInterface {
 
   public RowMetaInterface outputRowMeta;
   public NeoConnection neoConnection;

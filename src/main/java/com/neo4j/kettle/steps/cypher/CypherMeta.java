@@ -1,6 +1,5 @@
-package com.neo4j.kettle.steps.graph_output;
+package com.neo4j.kettle.steps.cypher;
 
-import com.neo4j.model.GraphProperty;
 import com.neo4j.model.GraphPropertyType;
 import org.apache.commons.lang.StringUtils;
 import org.pentaho.di.core.annotations.Step;
@@ -23,7 +22,6 @@ import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDataInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
-import org.pentaho.di.trans.step.StepMetaInjectionInterface;
 import org.pentaho.di.trans.step.StepMetaInterface;
 import org.pentaho.metastore.api.IMetaStore;
 import org.w3c.dom.Node;
@@ -33,12 +31,12 @@ import java.util.List;
 
 @Step(
   id = "Neo4jCypherOutput",
-  name = "Neo4j Cypher Output",
-  description = "Write fields Neo4j using Cypher with parameters",
-  image = "neo4j_logo.svg",
+  name = "Neo4j Cypher",
+  description = "Reads from or writes to Neo4j using Cypher with parameter data from input fields",
+  image = "neo4j_cypher.svg",
   categoryDescription = "Neo4j"
 )
-public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface {
+public class CypherMeta extends BaseStepMeta implements StepMetaInterface {
 
   private String connectionName;
   private String cypher;
@@ -46,7 +44,7 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
   private List<ParameterMapping> parameterMappings;
   private List<ReturnValue> returnValues;
 
- public CypherOutputMeta() {
+ public CypherMeta() {
    super();
    parameterMappings = new ArrayList<>();
    returnValues = new ArrayList<>();
@@ -57,15 +55,15 @@ public class CypherOutputMeta extends BaseStepMeta implements StepMetaInterface 
   }
 
   @Override public StepInterface getStep( StepMeta stepMeta, StepDataInterface stepDataInterface, int i, TransMeta transMeta, Trans trans ) {
-    return new CypherOutput( stepMeta, stepDataInterface, i, transMeta, trans );
+    return new Cypher( stepMeta, stepDataInterface, i, transMeta, trans );
   }
 
   @Override public StepDataInterface getStepData() {
-    return new CypherOutputData();
+    return new CypherData();
   }
 
   @Override public String getDialogClassName() {
-    return CypherOutputDialog.class.getName();
+    return CypherDialog.class.getName();
   }
 
   @Override public void getFields( RowMetaInterface rowMeta, String name, RowMetaInterface[] info, StepMeta nextStep, VariableSpace space,

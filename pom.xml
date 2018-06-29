@@ -7,7 +7,7 @@
     <artifactId>pentaho-ce-jar-parent-pom</artifactId>
     <version>8.1-SNAPSHOT</version>
   </parent>
-  <artifactId>kettle-neo4j-cypher-output</artifactId>
+  <artifactId>kettle-neo4j</artifactId>
   <name>${project.artifactId}</name>
   <description>Write tabular data into Neo4j using Cypher with parameters</description>
   <licenses>
@@ -121,6 +121,6 @@
 
 
 
-  <groupId>kettle-neo4j-cypher-output</groupId>
+  <groupId>kettle-neo4j</groupId>
   <version>0.0.2-SNAPSHOT</version>
 </project>

@@ -1,34 +1,32 @@
 package com.neo4j.model;
 
 import com.neo4j.core.Neo4jDefaults;
-import com.neo4j.shared.GraphModel;
-import com.neo4j.shared.GraphModelDialog;
 import org.apache.commons.lang.StringUtils;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.MessageBox;
 import org.eclipse.swt.widgets.Shell;
-import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.ui.core.dialog.ErrorDialog;
 import org.pentaho.metastore.api.IMetaStore;
 import org.pentaho.metastore.persist.MetaStoreFactory;
 
-public class NeoGraphModelUtils {
-  private static Class<?> PKG = NeoGraphModelUtils.class; // for i18n purposes, needed by Translator2!!
+public class GraphModelUtils {
+  private static Class<?> PKG = GraphModelUtils.class; // for i18n purposes, needed by Translator2!!
   
   private static MetaStoreFactory<GraphModel> staticFactory;
-  public static MetaStoreFactory<GraphModel> getConnectionFactory(IMetaStore metaStore) {
+  public static MetaStoreFactory<GraphModel> getModelFactory(IMetaStore metaStore) {
     if (staticFactory==null) {
       staticFactory = new MetaStoreFactory<>(GraphModel.class, metaStore, Neo4jDefaults.NAMESPACE);
     }
     return staticFactory;
   }
 
-  public static GraphModel newModel( Shell shell, MetaStoreFactory<GraphModel> factory) {
+  public static GraphModel newModel( Shell shell, MetaStoreFactory<GraphModel> factory, RowMetaInterface inputRowMeta) {
     GraphModel graphModel = new GraphModel();
     boolean ok = false;
     while (!ok) {
-      GraphModelDialog dialog = new GraphModelDialog(shell, graphModel);
+      GraphModelDialog dialog = new GraphModelDialog(shell, graphModel, inputRowMeta);
       if (dialog.open()) {
         // write to metastore...
         try {
@@ -60,16 +58,16 @@ public class NeoGraphModelUtils {
     return graphModel;
   }
 
-  public static void editModel(Shell shell, MetaStoreFactory<GraphModel> factory, String modelName) {
+  public static void editModel(Shell shell, MetaStoreFactory<GraphModel> factory, String modelName, RowMetaInterface inputRowMeta) {
     if (StringUtils.isEmpty(modelName)) {
       return;
     }
     try {
       GraphModel GraphModel = factory.loadElement(modelName);
       if (GraphModel==null) {
-        newModel(shell, factory);
+        newModel(shell, factory, inputRowMeta);
       } else {
-        GraphModelDialog GraphModelDialog = new GraphModelDialog(shell, GraphModel);
+        GraphModelDialog GraphModelDialog = new GraphModelDialog(shell, GraphModel, inputRowMeta);
         if (GraphModelDialog.open()) {
           factory.saveElement(GraphModel);
         }

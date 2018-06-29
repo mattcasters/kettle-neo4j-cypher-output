@@ -45,32 +45,5 @@ public class ParameterMapping {
     this.neoType = neoType;
   }
 
-  /**
-   * Convert the given Kettle value to a Neo4j data type
-   * @param valueMeta
-   * @param valueData
-   * @return
-   */
-  public Object convertFromKettle( ValueMetaInterface valueMeta, Object valueData ) throws KettleValueException {
-    GraphPropertyType type = GraphPropertyType.parseCode( neoType );
-    if (valueMeta.isNull(valueData)) {
-      return null;
-    }
-    switch(type) {
-      case String: return valueMeta.getString( valueData );
-      case Boolean: return valueMeta.getBoolean( valueData );
-      case Float: return valueMeta.getNumber( valueData );
-      case Integer: return valueMeta.getInteger( valueData );
-      case Date: return valueMeta.getDate( valueData ).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-      case LocalDateTime: return valueMeta.getDate( valueData ).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-      case ByteArray: return valueMeta.getBinary( valueData );
-      case Duration:
-      case DateTime:
-      case Time:
-      case Point:
-      case LocalTime:
-      default:
-        throw new KettleValueException( "Data conversion to Neo4j type '"+neoType+"' of parameter '"+parameter+"' is not supported yet" );
-    }
-  }
+
 }
